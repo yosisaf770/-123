@@ -30,7 +30,7 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- SVGs Icons (Hardcoded for maximum stability) ---
+        // --- SVGs Icons ---
         const Icons = {
             Plus: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
             Trash: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
@@ -39,10 +39,13 @@
             Send: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>,
             User: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
             History: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>,
-            X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            X: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+            Cloud: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>,
+            CloudOff: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5l14 14"></path><path d="M14.5 9a3.5 3.5 0 0 0-6.84 1H7a5 5 0 0 0-4.91 4.15"></path></svg>,
+            WifiOff: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
         };
 
-        // --- Firebase Configuration ---
+        // --- Configuration ---
         let firebaseConfig = {
             apiKey: "YOUR_API_KEY", 
             authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
@@ -52,7 +55,6 @@
             appId: "YOUR_APP_ID"
         };
 
-        // Check for injected config (internal use)
         try {
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 firebaseConfig = JSON.parse(__firebase_config);
@@ -77,32 +79,45 @@
             const [user, setUser] = useState(null);
             const [expenses, setExpenses] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [isOnline, setIsOnline] = useState(navigator.onLine);
             const [confirmDeleteId, setConfirmDeleteId] = useState(null);
             const [inputs, setInputs] = useState(
                 FRIENDS.reduce((acc, name) => ({ ...acc, [name]: { amount: '', description: '' } }), {})
             );
 
-            // Initial Load
+            // מעקב אחרי מצב חיבור לאינטרנט
             useEffect(() => {
-                if (isFirebaseActive) {
+                const handleOnline = () => setIsOnline(true);
+                const handleOffline = () => setIsOnline(false);
+                window.addEventListener('online', handleOnline);
+                window.addEventListener('offline', handleOffline);
+                return () => {
+                    window.removeEventListener('online', handleOnline);
+                    window.removeEventListener('offline', handleOffline);
+                };
+            }, []);
+
+            // טעינה התחלתית
+            useEffect(() => {
+                if (isFirebaseActive && isOnline) {
                     auth.signInAnonymously()
                         .then(cred => setUser(cred.user))
                         .catch(() => loadFromLocal());
                 } else {
                     loadFromLocal();
                 }
-            }, []);
+            }, [isOnline]);
 
             const loadFromLocal = () => {
-                const saved = localStorage.getItem('egypt_trip_vfinal');
+                const saved = localStorage.getItem('egypt_trip_voffline');
                 if (saved) setExpenses(JSON.parse(saved));
                 setLoading(false);
             };
 
-            // Persistence
+            // סנכרון נתונים
             useEffect(() => {
-                if (!isFirebaseActive) {
-                    localStorage.setItem('egypt_trip_vfinal', JSON.stringify(expenses));
+                if (!isFirebaseActive || !isOnline) {
+                    localStorage.setItem('egypt_trip_voffline', JSON.stringify(expenses));
                     return;
                 }
                 if (!user || !db) return;
@@ -116,7 +131,7 @@
                         setLoading(false);
                     }, () => loadFromLocal());
                 return () => unsubscribe();
-            }, [user, isFirebaseActive ? null : expenses]);
+            }, [user, isOnline, isFirebaseActive ? null : expenses]);
 
             const calcs = useMemo(() => {
                 const totals = {};
@@ -152,10 +167,10 @@
                     amount: parseFloat(amount),
                     description,
                     payer: name,
-                    createdAt: isFirebaseActive ? firebase.firestore.FieldValue.serverTimestamp() : { seconds: Math.floor(Date.now()/1000) }
+                    createdAt: (isFirebaseActive && isOnline) ? firebase.firestore.FieldValue.serverTimestamp() : { seconds: Math.floor(Date.now()/1000) }
                 };
 
-                if (isFirebaseActive && user) {
+                if (isFirebaseActive && user && isOnline) {
                     try {
                         await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').add(newExp);
                     } catch (e) {
@@ -170,7 +185,7 @@
             };
 
             const del = async (id) => {
-                if (isFirebaseActive && user) {
+                if (isFirebaseActive && user && isOnline) {
                     try {
                         await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').doc(id).delete();
                     } catch (e) {
@@ -182,19 +197,25 @@
                 setConfirmDeleteId(null);
             };
 
-            if (loading && isFirebaseActive && !user) {
-                return <div className="flex items-center justify-center min-h-screen font-black text-sky-600">מעמיסים...</div>;
+            if (loading && isFirebaseActive && isOnline && !user) {
+                return <div className="flex items-center justify-center min-h-screen font-black text-sky-600">מתחבר...</div>;
             }
 
             return (
                 <div className="app-container">
+                    {/* Status Bar המעודכן */}
+                    <div className={`text-[10px] py-1.5 px-4 flex items-center justify-center gap-2 font-black uppercase tracking-widest transition-colors ${!isOnline ? 'bg-red-500 text-white animate-pulse' : (isFirebaseActive ? 'bg-green-500 text-white' : 'bg-amber-400 text-amber-900')}`}>
+                        {!isOnline ? <Icons.WifiOff /> : (isFirebaseActive ? <Icons.Cloud /> : <Icons.CloudOff />)}
+                        {!isOnline ? 'אופליין - נשמר רק על הטלפון' : (isFirebaseActive ? 'מצב ענן: מסונכרן' : 'מצב מקומי: ללא סנכרון')}
+                    </div>
+
                     <header className="bg-gradient-to-br from-sky-500 to-sky-400 text-white text-center py-12 px-6 rounded-b-[4rem] shadow-2xl mb-10 relative overflow-hidden">
-                        <h1 className="text-4xl font-black drop-shadow-xl">חוזרים למצרים <span className="text-amber-300 italic">2026</span></h1>
+                        <h1 className="text-4xl font-black drop-shadow-xl text-center leading-tight">חוזרים למצרים <span className="text-amber-300 italic">2026</span></h1>
                         <p className="text-xs font-bold opacity-90 mt-2 uppercase tracking-[0.3em] text-sky-100">ניהול כספים משותף</p>
                     </header>
 
                     <main className="max-w-5xl mx-auto px-4 space-y-12">
-                        {/* Input Grid - 3 top, 2 bottom */}
+                        {/* Input Grid */}
                         <div className="space-y-6">
                             <h2 className="text-center font-black text-slate-400 uppercase tracking-widest text-[10px] flex items-center justify-center gap-2">
                                 <Icons.Plus /> הזנת הוצאה
@@ -209,7 +230,7 @@
                                             <div className="space-y-3">
                                                 <input type="number" placeholder="₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg shadow-sm" 
                                                        value={inputs[name].amount} onChange={e => setInputs({...inputs, [name]: {...inputs[name], amount: e.target.value}})} />
-                                                <input type="text" placeholder="מה קנית?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white transition-colors" 
+                                                <input type="text" placeholder="עבור מה?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white" 
                                                        value={inputs[name].description} onChange={e => setInputs({...inputs, [name]: {...inputs[name], description: e.target.value}})} />
                                                 <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
                                                     <Icons.Send /> עדכן
@@ -227,7 +248,7 @@
                                             <div className="space-y-3">
                                                 <input type="number" placeholder="₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg shadow-sm" 
                                                        value={inputs[name].amount} onChange={e => setInputs({...inputs, [name]: {...inputs[name], amount: e.target.value}})} />
-                                                <input type="text" placeholder="מה הפעם?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white transition-colors" 
+                                                <input type="text" placeholder="מה הפעם?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white" 
                                                        value={inputs[name].description} onChange={e => setInputs({...inputs, [name]: {...inputs[name], description: e.target.value}})} />
                                                 <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
                                                     <Icons.Send /> עדכן
@@ -240,7 +261,7 @@
                         </div>
 
                         {/* Summary Section */}
-                        <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-[3.5rem] p-8 text-white shadow-2xl relative border-2 border-white/10">
+                        <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-[3.5rem] p-8 text-white shadow-2xl relative border-2 border-white/10 overflow-hidden">
                             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10 text-center md:text-right">
                                 <div>
                                     <h2 className="text-2xl font-black flex items-center justify-center md:justify-start gap-3"><Icons.Wallet /> מצב הקופה</h2>
@@ -255,8 +276,8 @@
                                 {calcs.bals.map(b => (
                                     <div key={b.name} className="bg-black/10 backdrop-blur-md p-4 rounded-[2rem] w-32 text-center border border-white/5 transition-all">
                                         <div className="text-[11px] font-black opacity-60 truncate mb-1">{b.name}</div>
-                                        <div className="text-lg font-black leading-none mb-2">₪{b.total.toLocaleString()}</div>
-                                        <div className={`text-[10px] font-black px-2 py-1 rounded-xl inline-block ${b.balance >= 0 ? 'bg-sky-400 text-sky-950' : 'bg-white/10 text-white'}`}>
+                                        <div className="text-lg font-black mb-2">₪{b.total.toLocaleString()}</div>
+                                        <div className={`text-[10px] font-black px-2 py-1 rounded-xl inline-block ${b.balance >= 0 ? 'bg-sky-400 text-sky-950 shadow-sm' : 'bg-white/10 text-white'}`}>
                                             {b.balance >= 0 ? '+' : ''}{b.balance.toFixed(0)}
                                         </div>
                                     </div>
@@ -267,7 +288,7 @@
                         {/* Debts and History */}
                         <div className="grid lg:grid-cols-2 gap-8 items-start">
                             <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-sky-100">
-                                <h2 className="font-black mb-8 flex items-center gap-3 text-sky-600 uppercase text-lg tracking-tighter"><Icons.Arrow /> סיכום חובות</h2>
+                                <h2 className="font-black mb-8 flex items-center gap-3 text-sky-600 uppercase text-lg tracking-tighter leading-none"><Icons.Arrow /> סיכום חובות</h2>
                                 <div className="space-y-4">
                                     {calcs.sett.length === 0 ? (
                                         <div className="text-center py-16 bg-sky-50 rounded-[2.5rem] border-2 border-dashed border-sky-200 text-slate-400 font-bold italic text-sm">הכל מאוזן לגמרי!</div>
@@ -313,7 +334,7 @@
                                                         </button>
                                                         <button 
                                                             onClick={() => setConfirmDeleteId(null)} 
-                                                            className="bg-slate-200 text-slate-600 p-2 rounded-lg hover:bg-slate-300 transition-colors"
+                                                            className="bg-slate-200 text-slate-600 p-2 rounded-lg"
                                                         >
                                                             <Icons.X />
                                                         </button>
@@ -322,7 +343,6 @@
                                                     <button 
                                                         onClick={() => setConfirmDeleteId(e.id)} 
                                                         className="text-red-400 hover:text-red-600 p-2 transition-all active:scale-90"
-                                                        title="מחק הוצאה"
                                                     >
                                                         <Icons.Trash />
                                                     </button>
