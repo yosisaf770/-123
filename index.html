@@ -22,7 +22,6 @@
         .app-container { min-height: 100vh; padding-bottom: 3rem; }
         html, body { overflow-x: hidden; width: 100%; }
         .transition-all { transition: all 0.2s ease-in-out; }
-        /* Badge animation */
         @keyframes pulse-soft {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.6; }
@@ -57,7 +56,6 @@
             appId: "YOUR_APP_ID"
         };
 
-        // Check if injected via environment
         try {
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 config = JSON.parse(__firebase_config);
@@ -83,7 +81,6 @@
                 FRIENDS.reduce((acc, name) => ({ ...acc, [name]: { amount: '', description: '' } }), {})
             );
 
-            // Authentication & Local Storage Fallback
             useEffect(() => {
                 if (isFirebaseEnabled) {
                     auth.signInAnonymously()
@@ -95,15 +92,14 @@
             }, []);
 
             const loadLocally = () => {
-                const saved = localStorage.getItem('egypt_expenses_v2');
+                const saved = localStorage.getItem('egypt_expenses_v3');
                 if (saved) setExpenses(JSON.parse(saved));
                 setLoading(false);
             };
 
-            // Sync with Firebase OR LocalStorage
             useEffect(() => {
                 if (!isFirebaseEnabled) {
-                    localStorage.setItem('egypt_expenses_v2', JSON.stringify(expenses));
+                    localStorage.setItem('egypt_expenses_v3', JSON.stringify(expenses));
                     return;
                 }
                 if (!user || !db) return;
@@ -117,7 +113,7 @@
                         setLoading(false);
                     }, () => loadLocally());
                 return () => unsubscribe();
-            }, [user, isFirebaseEnabled ? null : expenses]);
+            }, [user, expenses, isFirebaseEnabled]);
 
             const calcs = useMemo(() => {
                 const totals = {};
@@ -159,7 +155,10 @@
                 if (isFirebaseEnabled && user) {
                     try {
                         await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').add(newExp);
-                    } catch (e) { alert("שגיאה בסנכרון. נשמר מקומית."); }
+                    } catch (e) { 
+                        const localExp = { id: Date.now().toString(), ...newExp };
+                        setExpenses(prev => [localExp, ...prev]);
+                    }
                 } else {
                     const localExp = { id: Date.now().toString(), ...newExp };
                     setExpenses(prev => [localExp, ...prev]);
@@ -171,7 +170,9 @@
                 if (isFirebaseEnabled && user) {
                     try {
                         await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').doc(id).delete();
-                    } catch (e) {}
+                    } catch (e) {
+                        setExpenses(prev => prev.filter(e => e.id !== id));
+                    }
                 } else {
                     setExpenses(prev => prev.filter(e => e.id !== id));
                 }
@@ -188,7 +189,7 @@
                 <div className="app-container">
                     {!isFirebaseEnabled && (
                         <div className="bg-amber-100 text-amber-800 text-[10px] py-1 text-center font-bold demo-badge shadow-sm sticky top-0 z-50">
-                            מצב מקומי פעיל (הנתונים נשמרים רק על המכשיר שלך)
+                            מצב מקומי (נתונים נשמרים במכשיר זה)
                         </div>
                     )}
 
@@ -198,7 +199,6 @@
                     </header>
 
                     <main className="max-w-5xl mx-auto px-4 space-y-12">
-                        {/* Input Grid */}
                         <div className="space-y-6">
                             <h2 className="text-center font-black text-slate-400 uppercase tracking-widest text-[10px] flex items-center justify-center gap-2">
                                 <Icons.Plus /> עדכון הוצאה
@@ -243,7 +243,6 @@
                             </div>
                         </div>
 
-                        {/* Summary */}
                         <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-[3.5rem] p-8 text-white shadow-2xl relative border-2 border-white/10">
                             <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10 text-center md:text-right">
                                 <div>
@@ -268,9 +267,7 @@
                             </div>
                         </div>
 
-                        {/* Debts & History Grid */}
                         <div className="grid lg:grid-cols-2 gap-8 items-start">
-                            {/* Debts */}
                             <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-sky-100 h-full">
                                 <h2 className="font-black mb-8 flex items-center gap-3 text-sky-600 uppercase text-lg tracking-tighter"><Icons.Arrow /> סיכום חובות</h2>
                                 <div className="space-y-4">
@@ -289,7 +286,6 @@
                                 </div>
                             </div>
 
-                            {/* History */}
                             <div className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-sky-100 flex flex-col h-[500px]">
                                 <div className="flex justify-between items-center mb-8">
                                     <h2 className="font-black flex items-center gap-3 text-slate-400 uppercase text-lg tracking-tighter"><Icons.History /> היסטוריה</h2>
