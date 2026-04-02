@@ -22,6 +22,12 @@
         .app-container { min-height: 100vh; padding-bottom: 3rem; }
         html, body { overflow-x: hidden; width: 100%; }
         .transition-all { transition: all 0.2s ease-in-out; }
+        /* Animation for demo badge */
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .demo-badge { animation: pulse-soft 2s infinite; }
     </style>
 </head>
 <body>
@@ -41,9 +47,9 @@
             History: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         };
 
-        // --- Firebase Configuration ---
+        // --- Configuration ---
         let config = {
-            apiKey: "YOUR_API_KEY",
+            apiKey: "YOUR_API_KEY", // החלף בפרטים האמיתיים שלך לסנכרון ענן
             authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
             projectId: "YOUR_PROJECT_ID",
             storageBucket: "YOUR_PROJECT_ID.appspot.com",
@@ -56,18 +62,16 @@
             if (typeof __firebase_config !== 'undefined' && __firebase_config) {
                 config = JSON.parse(__firebase_config);
             }
-        } catch (e) {
-            console.error("Config parse error:", e);
-        }
+        } catch (e) {}
 
         const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'egypt-trip-2026';
-        const isConfigValid = config.apiKey && config.apiKey !== "YOUR_API_KEY";
+        const isFirebaseEnabled = config.apiKey && config.apiKey !== "YOUR_API_KEY";
 
-        if (isConfigValid) {
+        if (isFirebaseEnabled) {
             firebase.initializeApp(config);
         }
-        const db = isConfigValid ? firebase.firestore() : null;
-        const auth = isConfigValid ? firebase.auth() : null;
+        const db = isFirebaseEnabled ? firebase.firestore() : null;
+        const auth = isFirebaseEnabled ? firebase.auth() : null;
 
         const FRIENDS = ['בני ממטרה', 'יוסי הגבר', 'מוחמד אליעזר', 'שמעון הצדיק', 'מנדי הסובל'];
 
@@ -79,24 +83,35 @@
                 FRIENDS.reduce((acc, name) => ({ ...acc, [name]: { amount: '', description: '' } }), {})
             );
 
+            // --- Persistence Logic (Hybrid: Firebase or LocalStorage) ---
             useEffect(() => {
-                if (!isConfigValid) {
-                    setLoading(false);
-                    return;
+                if (isFirebaseEnabled) {
+                    const initAuth = async () => {
+                        try {
+                            const cred = await auth.signInAnonymously();
+                            setUser(cred.user);
+                        } catch (err) {
+                            console.error("Auth error:", err);
+                            loadLocally();
+                        }
+                    };
+                    initAuth();
+                } else {
+                    loadLocally();
                 }
-                const initAuth = async () => {
-                    try {
-                        const cred = await auth.signInAnonymously();
-                        setUser(cred.user);
-                    } catch (err) {
-                        console.error("Auth error:", err);
-                        setLoading(false);
-                    }
-                };
-                initAuth();
             }, []);
 
+            const loadLocally = () => {
+                const saved = localStorage.getItem('egypt_expenses');
+                if (saved) setExpenses(JSON.parse(saved));
+                setLoading(false);
+            };
+
             useEffect(() => {
+                if (!isFirebaseEnabled) {
+                    localStorage.setItem('egypt_expenses', JSON.stringify(expenses));
+                    return;
+                }
                 if (!user || !db) return;
                 const unsubscribe = db.collection('artifacts').doc(currentAppId)
                     .collection('public').doc('data').collection('expenses')
@@ -107,10 +122,10 @@
                         setLoading(false);
                     }, (err) => {
                         console.error("Firestore error:", err);
-                        setLoading(false);
+                        loadLocally();
                     });
                 return () => unsubscribe();
-            }, [user]);
+            }, [user, expenses]);
 
             const calcs = useMemo(() => {
                 const totals = {};
@@ -140,36 +155,36 @@
 
             const add = async (name) => {
                 const { amount, description } = inputs[name];
-                if (!amount || !description || !user) return;
-                try {
-                    await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').add({
-                        amount: parseFloat(amount),
-                        description,
-                        payer: name,
-                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    setInputs(prev => ({ ...prev, [name]: { amount: '', description: '' } }));
-                } catch (e) { alert("שגיאה בשמירה"); }
+                if (!amount || !description) return;
+                
+                const newExp = {
+                    amount: parseFloat(amount),
+                    description,
+                    payer: name,
+                    createdAt: isFirebaseEnabled ? firebase.firestore.FieldValue.serverTimestamp() : { seconds: Math.floor(Date.now()/1000) }
+                };
+
+                if (isFirebaseEnabled && user) {
+                    try {
+                        await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').add(newExp);
+                    } catch (e) { alert("שגיאה בשמירה לענן"); }
+                } else {
+                    setExpenses([ { id: Date.now().toString(), ...newExp }, ...expenses]);
+                }
+                setInputs(prev => ({ ...prev, [name]: { amount: '', description: '' } }));
             };
 
             const del = async (id) => {
-                if (!user || !db) return;
-                try {
-                    await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').doc(id).delete();
-                } catch (e) { console.error(e); }
+                if (isFirebaseEnabled && user) {
+                    try {
+                        await db.collection('artifacts').doc(currentAppId).collection('public').doc('data').collection('expenses').doc(id).delete();
+                    } catch (e) { console.error(e); }
+                } else {
+                    setExpenses(expenses.filter(e => e.id !== id));
+                }
             };
 
-            if (!isConfigValid) return (
-                <div className="flex items-center justify-center min-h-screen p-6 text-center">
-                    <div className="bg-white p-10 rounded-[3rem] shadow-2xl border-4 border-amber-400 max-w-sm">
-                        <Icons.Plus />
-                        <h2 className="text-2xl font-black mb-4">חסרים פרטי Firebase</h2>
-                        <p className="text-slate-600 text-sm mb-6 leading-relaxed">עליך להחליף את המשתנים בקוד בפרטים מהחשבון שלך ב-Firebase Console.</p>
-                    </div>
-                </div>
-            );
-
-            if (loading && !user) return (
+            if (loading && isFirebaseEnabled && !user) return (
                 <div className="flex flex-col items-center justify-center min-h-screen font-black text-sky-600 animate-pulse">
                     <Icons.Wallet />
                     <div className="mt-4 text-xl">מתחבר למערכת...</div>
@@ -178,6 +193,12 @@
 
             return (
                 <div className="app-container">
+                    {!isFirebaseEnabled && (
+                        <div className="bg-amber-100 text-amber-800 text-[10px] py-1 text-center font-bold demo-badge">
+                            מצב מקומי פעיל (נתונים נשמרים על המכשיר בלבד)
+                        </div>
+                    )}
+
                     <header className="bg-gradient-to-br from-sky-500 to-sky-400 text-white text-center py-12 px-6 rounded-b-[4rem] shadow-2xl mb-10 relative overflow-hidden">
                         <h1 className="text-4xl font-black drop-shadow-xl">חוזרים למצרים <span className="text-amber-300 italic">2026</span></h1>
                         <p className="text-xs font-bold opacity-90 mt-2 uppercase tracking-[0.3em] text-sky-100">יומן מסע כספי משותף</p>
@@ -191,16 +212,16 @@
                             <div className="flex flex-col items-center gap-4">
                                 <div className="flex flex-wrap justify-center gap-4 w-full">
                                     {FRIENDS.slice(0, 3).map(name => (
-                                        <div key={name} className="bg-amber-400 p-5 rounded-[2.5rem] shadow-xl border-b-8 border-amber-600 w-full sm:w-56 lg:w-64">
+                                        <div key={name} className="bg-amber-400 p-5 rounded-[2.5rem] shadow-xl border-b-8 border-amber-600 w-full sm:w-56 lg:w-64 transition-all active:scale-95">
                                             <div className="bg-white/40 py-3 rounded-2xl text-center mb-4 border border-white/20 shadow-inner">
                                                 <span className="font-serif italic font-black text-2xl text-slate-900">{name}</span>
                                             </div>
                                             <div className="space-y-3">
-                                                <input type="number" placeholder="סכום ₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg" 
+                                                <input type="number" placeholder="₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg" 
                                                        value={inputs[name].amount} onChange={e => setInputs({...inputs, [name]: {...inputs[name], amount: e.target.value}})} />
-                                                <input type="text" placeholder="עבור מה?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white" 
+                                                <input type="text" placeholder="מה קנית?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white" 
                                                        value={inputs[name].description} onChange={e => setInputs({...inputs, [name]: {...inputs[name], description: e.target.value}})} />
-                                                <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+                                                <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg transition-all">
                                                     <Icons.Send /> עדכן
                                                 </button>
                                             </div>
@@ -209,16 +230,16 @@
                                 </div>
                                 <div className="flex flex-wrap justify-center gap-4 w-full">
                                     {FRIENDS.slice(3, 5).map(name => (
-                                        <div key={name} className="bg-amber-400 p-5 rounded-[2.5rem] shadow-xl border-b-8 border-amber-600 w-full sm:w-56 lg:w-64">
+                                        <div key={name} className="bg-amber-400 p-5 rounded-[2.5rem] shadow-xl border-b-8 border-amber-600 w-full sm:w-56 lg:w-64 transition-all active:scale-95">
                                             <div className="bg-white/40 py-3 rounded-2xl text-center mb-4 border border-white/20 shadow-inner">
                                                 <span className="font-serif italic font-black text-2xl text-slate-900">{name}</span>
                                             </div>
                                             <div className="space-y-3">
-                                                <input type="number" placeholder="סכום ₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg" 
+                                                <input type="number" placeholder="₪" className="w-full p-3 rounded-xl outline-none text-center font-black text-lg" 
                                                        value={inputs[name].amount} onChange={e => setInputs({...inputs, [name]: {...inputs[name], amount: e.target.value}})} />
                                                 <input type="text" placeholder="מה הפעם?" className="w-full p-2.5 rounded-xl outline-none text-xs text-center bg-white/50 focus:bg-white" 
                                                        value={inputs[name].description} onChange={e => setInputs({...inputs, [name]: {...inputs[name], description: e.target.value}})} />
-                                                <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all">
+                                                <button onClick={() => add(name)} className="w-full bg-slate-950 text-amber-300 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg transition-all">
                                                     <Icons.Send /> עדכן
                                                 </button>
                                             </div>
@@ -278,11 +299,11 @@
                                 </div>
                                 <div className="overflow-y-auto flex-1 space-y-3">
                                     {expenses.length === 0 ? (
-                                        <p className="text-center py-20 opacity-20 italic font-black uppercase tracking-widest text-sm">No activity</p>
+                                        <p className="text-center py-20 opacity-20 italic font-black uppercase tracking-widest text-sm">אין עדיין פעולות</p>
                                     ) : expenses.map(e => (
                                         <div key={e.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-transparent hover:border-sky-100 transition-all group">
                                             <div className="text-right flex-1 min-w-0 pr-2">
-                                                <div className="text-sm font-black text-slate-800 truncate">{e.description}</div>
+                                                <div className="text-sm font-black text-slate-800 truncate leading-tight">{e.description}</div>
                                                 <div className="text-[10px] text-amber-700 font-serif italic font-black mt-1 flex items-center gap-1 opacity-70">
                                                     <Icons.User /> {e.payer}
                                                 </div>
